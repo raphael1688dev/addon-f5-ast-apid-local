@@ -47,11 +47,12 @@ COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 # 建立服務資料夾
 RUN mkdir -p /etc/services.d/init-remote-db /etc/services.d/otel-collector /etc/services.d/log-analyzer /etc/services.d/prometheus
 
-# 1. 資料庫初始化腳本 (維持 EOF 修正)
+# 1. 資料庫初始化腳本
+# [FIX] 移除 s6-svc 指令，避免報錯
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port")\n\
 USER=$(bashio::config "db_user"); PASS=$(bashio::config "db_password")\n\
-if [ -f "/data/db_initialized.flag" ]; then s6-svc -d /var/run/s6/services/init-remote-db; exit 0; fi\n\
+if [ -f "/data/db_initialized.flag" ]; then exit 0; fi\n\
 bashio::log.info "Waiting for ClickHouse at $HOST:$PORT..."\n\
 while ! nc -z "$HOST" "$PORT"; do sleep 2; done\n\
 \n\
@@ -68,14 +69,13 @@ EOF\n\
 bashio::log.info "Running SQL initialization scripts..."\n\
 for f in /app/sql/*; do [ -f "$f" ] || continue; chmod +x "$f"; bashio::log.info "Running $f"; /bin/bash "$f"; done\n\
 touch "/data/db_initialized.flag"\n\
-s6-svc -d /var/run/s6/services/init-remote-db\n' > /etc/services.d/init-remote-db/run
+bashio::log.info "Database initialized successfully."\n' > /etc/services.d/init-remote-db/run
 
 # 2. OTel Collector 腳本
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password")\n\
 export OTEL_COLLECTOR_CLICKHOUSE_PASSWORD="$PASS"\n\
 export CLICKHOUSE_PASSWORD="$PASS"\n\
-# [FIX] 也要記得幫 OTel 指定 User (雖然它可能預設也是 default，但保險起見)\n\
 USER=$(bashio::config "db_user")\n\
 export OTEL_COLLECTOR_CLICKHOUSE_USER="$USER"\n\
 \n\
@@ -83,11 +83,11 @@ sed -i "s|endpoint: tcp://.*:9000|endpoint: tcp://$HOST:$PORT|g" /etc/otel-colle
 sed -i "s|ca_file:|# ca_file:|g" /etc/otel-collector/config.yaml\n\
 sed -i "s|cert_file:|# cert_file:|g" /etc/otel-collector/config.yaml\n\
 sed -i "s|key_file:|# key_file:|g" /etc/otel-collector/config.yaml\n\
+\n\
 while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done\n\
 exec /usr/bin/otelcol-custom --config=/etc/otel-collector/config.yaml\n' > /etc/services.d/otel-collector/run
 
 # 3. Log Analyzer 腳本
-# [關鍵修正] 加入 USER 變數並匯出 CLICKHOUSE_USER
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port")\n\
 USER=$(bashio::config "db_user"); PASS=$(bashio::config "db_password")\n\

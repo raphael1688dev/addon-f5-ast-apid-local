@@ -31,9 +31,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends clickhouse-client \
     && rm -rf /var/lib/apt/lists/*
 
-# [關鍵修正] 移除原本的 Wrapper 腳本
-# 改用簡單的軟連結，避免 Shell Pipe 處理問題導致的卡頓
-RUN ln -s /usr/bin/clickhouse-client /usr/bin/clickhouse
+# [關鍵修正] 建立軟連結至 /usr/local/bin
+# 避開 /usr/bin/clickhouse 檔案已存在的錯誤，並利用 PATH 優先權讓腳本正確呼叫 Client
+RUN ln -s /usr/bin/clickhouse-client /usr/local/bin/clickhouse
 
 # 部署元件執行檔
 COPY --from=prometheus_source /bin/prometheus /usr/bin/prometheus
@@ -52,7 +52,6 @@ COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 RUN mkdir -p /etc/services.d/init-remote-db /etc/services.d/otel-collector /etc/services.d/log-analyzer /etc/services.d/prometheus
 
 # 1. 資料庫初始化腳本
-# [重要] 這裡保留 export 環境變數，官方 Client 會自動讀取這些變數來連線
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port")\n\
 USER=$(bashio::config "db_user"); PASS=$(bashio::config "db_password")\n\

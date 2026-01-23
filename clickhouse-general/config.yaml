@@ -7,14 +7,17 @@ arch:
 startup: services
 boot: auto
 init: false
-privileged: true
+# [FIXED] 修正這裡：privileged 改為具體的權限列表
+privileged:
+  - SYS_NICE
+  - IPC_LOCK
 map:
   - config:rw
   - share:rw
 
 ports:
-  8123/tcp: 18123   # HTTP Port
-  9000/tcp: 19000   # TCP Port (給 Logic 連線用)
+  8123/tcp: 18123
+  9000/tcp: 19000
 
 options:
   password: "default_password"

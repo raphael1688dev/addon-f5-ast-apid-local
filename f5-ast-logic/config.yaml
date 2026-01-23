@@ -1,5 +1,5 @@
 name: "F5 AST Logic"
-version: "0.1.0-32"
+version: "0.1.0-33"
 slug: "f5_ast_logic"
 description: "Core logic for F5 AST API Discovery"
 url: "https://github.com/raphael1688/ast-api-discovery"
@@ -7,6 +7,7 @@ arch:
   - amd64
 startup: services
 boot: auto
+init: false
 map:
   - config:rw
   - share:rw

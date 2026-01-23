@@ -10,8 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY rootfs /
 
-# [NUCLEAR FIX v3] 自動偵測執行檔路徑
-# 加入了偵測邏輯：優先找 /usr/sbin/clickhouse-server
+# [NUCLEAR FIX v4] 加入 Console Logging 設定
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 PASSWORD=$(bashio::config "password")\n\
 MAX_MEM=$(bashio::config "max_memory_usage")\n\
@@ -19,7 +18,7 @@ MAX_SERVER_MEM=$(bashio::config "max_server_memory")\n\
 \n\
 export CLICKHOUSE_PASSWORD="$PASSWORD"\n\
 \n\
-# 自動尋找 clickhouse-server 執行檔位置\n\
+# 自動尋找執行檔\n\
 if [ -f "/usr/sbin/clickhouse-server" ]; then\n\
     BINARY="/usr/sbin/clickhouse-server"\n\
 else\n\
@@ -27,11 +26,21 @@ else\n\
 fi\n\
 bashio::log.info "Found ClickHouse binary at: $BINARY"\n\
 \n\
-# 確保資料夾在 Runtime 存在\n\
+# 確保資料夾存在\n\
 if [ ! -d "/data/clickhouse" ]; then\n\
     bashio::log.info "Creating data directory..."\n\
     mkdir -p /data/clickhouse\n\
 fi\n\
+\n\
+# [NEW] 強制開啟控制台日誌 (讓我們能在 HA 看到輸出)\n\
+cat > /etc/clickhouse-server/config.d/console_log.xml <<EOF\n\
+<clickhouse>\n\
+    <logger>\n\
+        <level>information</level>\n\
+        <console>1</console>\n\
+    </logger>\n\
+</clickhouse>\n\
+EOF\n\
 \n\
 # 設定效能參數\n\
 cat > /etc/clickhouse-server/config.d/tuning.xml <<EOF\n\
@@ -45,6 +54,7 @@ EOF\n\
 \n\
 chown -R clickhouse:clickhouse /data/clickhouse\n\
 bashio::log.info "Starting ClickHouse..."\n\
+# 執行 Server\n\
 exec s6-setuidgid clickhouse "$BINARY" --config-file=/etc/clickhouse-server/config.xml\n\
 ' > /etc/services.d/clickhouse/run
 

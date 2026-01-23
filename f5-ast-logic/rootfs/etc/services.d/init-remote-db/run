@@ -2,7 +2,6 @@
 HOST=$(bashio::config 'db_host'); PORT=$(bashio::config 'db_port')
 USER=$(bashio::config 'db_user'); PASS=$(bashio::config 'db_password')
 
-# 防呆
 : ${HOST:="127.0.0.1"}; : ${PORT:=19000}
 : ${USER:="default"}; : ${PASS:="default_password"}
 
@@ -16,9 +15,7 @@ while ! nc -z "$HOST" "$PORT"; do sleep 2; done
 
 bashio::log.info "Connected! Running initialization scripts..."
 
-# [CRITICAL] 設定環境變數
-# clickhouse-client 在執行時會自動讀取這些變數
-# 這樣 .sh 腳本就算沒寫 host 參數，也會連到遠端 DB
+# 注入環境變數供 .sh 腳本使用
 export CLICKHOUSE_HOST="$HOST"
 export CLICKHOUSE_PORT="$PORT"
 export CLICKHOUSE_USER="$USER"
@@ -26,12 +23,10 @@ export CLICKHOUSE_PASSWORD="$PASS"
 
 for script_file in /app/sql/*; do
     [ -f "$script_file" ] || continue
-    
-    # 自動給予執行權限
     chmod +x "$script_file"
-    
     bashio::log.info "Executing: $script_file"
-    # 使用 bash 執行 .sh 檔案
+    
+    # 使用 bash 執行
     if /bin/bash "$script_file"; then
         bashio::log.info "Success: $script_file"
     else

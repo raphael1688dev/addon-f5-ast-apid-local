@@ -22,7 +22,7 @@ FROM ghcr.io/f5devcentral/application-study-tool/otel_custom_collector:v0.7.0 as
 # --- Final Stage ---
 FROM ghcr.io/hassio-addons/debian-base:7.3.0
 
-# 安裝套件 (不含 pip3，因為 analyzer 是 binary)
+# 安裝套件
 RUN apt-get update && apt-get install -y --no-install-recommends \
     clickhouse-client python3 netcat-openbsd curl bash \
     && rm -rf /var/lib/apt/lists/*
@@ -40,7 +40,7 @@ COPY --from=fetcher /downloads/prometheus.yml /etc/prometheus/prometheus.yml
 COPY --from=fetcher /downloads/otel-config.yaml /etc/otel-collector/config.yaml
 COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 
-# [NUCLEAR FIX] 直接產生所有啟動腳本，避開 PID 1 與 CRLF 問題
+# 直接產生所有啟動腳本，確保格式與內容完整
 RUN mkdir -p /etc/services.d/init-remote-db /etc/services.d/otel-collector /etc/services.d/log-analyzer /etc/services.d/prometheus
 
 # 1. Init DB 腳本
@@ -55,8 +55,18 @@ for f in /app/sql/*; do [ -f "$f" ] || continue; chmod +x "$f"; bashio::log.info
 touch "/data/db_initialized.flag"\n\
 s6-svc -d /var/run/s6/services/init-remote-db\n' > /etc/services.d/init-remote-db/run
 
-# 2. OTel Collector 腳本
+# 2. OTel Collector 腳本 (修正後完整的 printf)
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password")\n\
 export OTEL_COLLECTOR_CLICKHOUSE_PASSWORD="$PASS"\n\
-sed -i "s|endpoint: tcp://.*:9000|endpoint: tcp://$HOST:$PORT|g" /etc/
+sed -i "s|endpoint: tcp://.*:9000|endpoint: tcp://$HOST:$PORT|g" /etc/otel-collector/config.yaml\n\
+while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done\n\
+exec /usr/bin/otelcol-custom --config=/etc/otel-collector/config.yaml\n' > /etc/services.d/otel-collector/run
+
+# 3. Log Analyzer 腳本
+RUN printf '#!/usr/bin/with-contenv bashio\n\
+HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password"); INTERVAL=$(bashio::config "analyzer_interval")\n\
+export CLICKHOUSE_HOST="$HOST"; export CLICKHOUSE_PORT="$PORT"; export CLICKHOUSE_PASSWORD="$PASS"; export DATA_ANALYSIS_MIN_INTERVAL_SECONDS="$INTERVAL"; export ACCESS_LOGS_FETCH_LIMIT=3000000; export CLICKHOUSE_USE_TLS="False"\n\
+while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done\n\
+cd /app/analyzer\n\
+exec ./api_discovery\n' > /etc/services.d/log-analyzer

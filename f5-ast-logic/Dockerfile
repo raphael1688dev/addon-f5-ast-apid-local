@@ -47,8 +47,7 @@ COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 # 建立服務資料夾
 RUN mkdir -p /etc/services.d/init-remote-db /etc/services.d/otel-collector /etc/services.d/log-analyzer /etc/services.d/prometheus
 
-# 1. 資料庫初始化腳本
-# [BUG FIX] 補上遺失的 EOF，修正語法錯誤
+# 1. 資料庫初始化腳本 (維持 EOF 修正)
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port")\n\
 USER=$(bashio::config "db_user"); PASS=$(bashio::config "db_password")\n\
@@ -76,22 +75,32 @@ RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password")\n\
 export OTEL_COLLECTOR_CLICKHOUSE_PASSWORD="$PASS"\n\
 export CLICKHOUSE_PASSWORD="$PASS"\n\
+# [FIX] 也要記得幫 OTel 指定 User (雖然它可能預設也是 default，但保險起見)\n\
+USER=$(bashio::config "db_user")\n\
+export OTEL_COLLECTOR_CLICKHOUSE_USER="$USER"\n\
 \n\
-# 修正 Endpoint\n\
 sed -i "s|endpoint: tcp://.*:9000|endpoint: tcp://$HOST:$PORT|g" /etc/otel-collector/config.yaml\n\
-\n\
-# [Fix TLS Error] 註解掉憑證設定\n\
 sed -i "s|ca_file:|# ca_file:|g" /etc/otel-collector/config.yaml\n\
 sed -i "s|cert_file:|# cert_file:|g" /etc/otel-collector/config.yaml\n\
 sed -i "s|key_file:|# key_file:|g" /etc/otel-collector/config.yaml\n\
-\n\
 while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done\n\
 exec /usr/bin/otelcol-custom --config=/etc/otel-collector/config.yaml\n' > /etc/services.d/otel-collector/run
 
 # 3. Log Analyzer 腳本
+# [關鍵修正] 加入 USER 變數並匯出 CLICKHOUSE_USER
 RUN printf '#!/usr/bin/with-contenv bashio\n\
-HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password"); INTERVAL=$(bashio::config "analyzer_interval")\n\
-export CLICKHOUSE_HOST="$HOST"; export CLICKHOUSE_PORT="$PORT"; export CLICKHOUSE_PASSWORD="$PASS"; export DATA_ANALYSIS_MIN_INTERVAL_SECONDS="$INTERVAL"; export ACCESS_LOGS_FETCH_LIMIT=3000000; export CLICKHOUSE_USE_TLS="False"\n\
+HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port")\n\
+USER=$(bashio::config "db_user"); PASS=$(bashio::config "db_password")\n\
+INTERVAL=$(bashio::config "analyzer_interval")\n\
+\n\
+export CLICKHOUSE_HOST="$HOST"\n\
+export CLICKHOUSE_PORT="$PORT"\n\
+export CLICKHOUSE_USER="$USER"\n\
+export CLICKHOUSE_PASSWORD="$PASS"\n\
+export DATA_ANALYSIS_MIN_INTERVAL_SECONDS="$INTERVAL"\n\
+export ACCESS_LOGS_FETCH_LIMIT=3000000\n\
+export CLICKHOUSE_USE_TLS="False"\n\
+\n\
 while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done\n\
 cd /app/analyzer\n\
 exec ./api_discovery\n' > /etc/services.d/log-analyzer/run

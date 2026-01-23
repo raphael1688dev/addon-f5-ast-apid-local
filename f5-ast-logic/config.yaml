@@ -1,23 +1,24 @@
 name: "F5 AST Logic"
-version: "0.1.0-27"
+version: "0.1.0-28"
 slug: "f5_ast_logic"
-description: "Core logic. Requires 'General ClickHouse'. Prometheus on port 19091."
+description: "Core logic for F5 AST API Discovery"
+url: "https://github.com/raphael1688/ast-api-discovery"
 arch:
   - amd64
 startup: services
 boot: auto
-# [關鍵修正] 必須為 false，因為我們使用的映像檔已經內建 init 系統
-init: false
 map:
   - config:rw
-
+  - share:rw
 ports:
-  514/udp: 1514      # Syslog (F5 HSL Target)
-  9090/tcp: 19091    # Prometheus Metrics (改為 19091 避開衝突)
-
+  # [重要] 開放 UDP 54526 讓 F5 傳送 Syslog
+  54526/udp: 54526
+  # Prometheus 介面 (可選，除錯用)
+  9090/tcp: 9090
 options:
-  db_host: "172.16.132.2"   # NUC IP
-  db_port: 9000           # ClickHouse TCP Port
+  # 請填寫 General ClickHouse 的 IP (例如 172.16.x.x 或主機 IP)
+  db_host: "172.16.132.2"
+  db_port: 9000
   db_user: "default"
   db_password: "default"
   analyzer_interval: 300
@@ -27,3 +28,4 @@ schema:
   db_user: str
   db_password: str
   analyzer_interval: int
+# image: ... (這行請務必刪除或註解，以確保使用本地 Dockerfile 編譯)

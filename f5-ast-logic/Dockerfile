@@ -1,22 +1,16 @@
-# 使用 Home Assistant 官方 Debian 基礎映像檔
 ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:7.3.0
 
 # --- Stage 1: 下載資源 ---
 FROM alpine:latest as fetcher
 RUN apk add --no-cache curl jq
 WORKDIR /downloads
-
-# 1. 下載 OTel 與 Prometheus 設定檔
 RUN curl -o otel-config.yaml https://raw.githubusercontent.com/raphael1688/ast-api-discovery/refs/heads/main/services/otel_collector/config.yaml
 RUN curl -o prometheus.yml https://raw.githubusercontent.com/raphael1688/ast-api-discovery/refs/heads/main/services/prometheus/prometheus.yml
-
-# 2. 下載資料庫初始化腳本
 RUN mkdir -p init_scripts
 WORKDIR /downloads/init_scripts
 RUN curl -s "https://api.github.com/repos/raphael1688/ast-api-discovery/contents/services/clickhouse/docker-entrypoint-initdb.d?ref=main" \
     | jq -r '.[].name' \
     | while read filename; do \
-        echo "Downloading $filename..."; \
         curl -O "https://raw.githubusercontent.com/raphael1688/ast-api-discovery/refs/heads/main/services/clickhouse/docker-entrypoint-initdb.d/$filename"; \
       done
 
@@ -28,32 +22,24 @@ FROM ghcr.io/f5devcentral/application-study-tool/otel_custom_collector:v0.7.0 as
 # --- Final Stage ---
 FROM ghcr.io/hassio-addons/debian-base:7.3.0
 
-# 安裝套件
 RUN apt-get update && apt-get install -y --no-install-recommends \
     clickhouse-client python3 netcat-openbsd curl bash \
     && rm -rf /var/lib/apt/lists/*
 
-# 部署執行檔 [cite: 43]
 COPY --from=prometheus_source /bin/prometheus /usr/bin/prometheus
 COPY --from=collector_source /otelcol-custom /usr/bin/otelcol-custom
 RUN chmod +x /usr/bin/otelcol-custom
-
-# 部署 Analyzer 執行檔 [cite: 44]
 WORKDIR /app/analyzer
 COPY --from=analyzer_source /app/. .
 
-# 部署設定與 SQL 腳本 [cite: 45]
 RUN mkdir -p /etc/prometheus /etc/otel-collector /app/sql /data/prometheus
 COPY --from=fetcher /downloads/prometheus.yml /etc/prometheus/prometheus.yml
 COPY --from=fetcher /downloads/otel-config.yaml /etc/otel-collector/config.yaml
 COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 
-# 建立服務資料夾 [cite: 62]
 RUN mkdir -p /etc/services.d/init-remote-db /etc/services.d/otel-collector /etc/services.d/log-analyzer /etc/services.d/prometheus
 
-# --- 透過 printf 產生啟動腳本，避開 Windows 換行符號問題 ---
-
-# 1. Init DB 腳本 [cite: 62, 65]
+# 1. Init DB
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port")\n\
 USER=$(bashio::config "db_user"); PASS=$(bashio::config "db_password")\n\
@@ -65,7 +51,7 @@ for f in /app/sql/*; do [ -f "$f" ] || continue; chmod +x "$f"; bashio::log.info
 touch "/data/db_initialized.flag"\n\
 s6-svc -d /var/run/s6/services/init-remote-db\n' > /etc/services.d/init-remote-db/run
 
-# 2. OTel Collector 腳本 [cite: 67, 68]
+# 2. OTel Collector
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password")\n\
 export OTEL_COLLECTOR_CLICKHOUSE_PASSWORD="$PASS"\n\
@@ -73,7 +59,7 @@ sed -i "s|endpoint: tcp://.*:9000|endpoint: tcp://$HOST:$PORT|g" /etc/otel-colle
 while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done\n\
 exec /usr/bin/otelcol-custom --config=/etc/otel-collector/config.yaml\n' > /etc/services.d/otel-collector/run
 
-# 3. Log Analyzer 腳本 [cite: 69, 72]
+# 3. Log Analyzer
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password"); INTERVAL=$(bashio::config "analyzer_interval")\n\
 export CLICKHOUSE_HOST="$HOST"; export CLICKHOUSE_PORT="$PORT"; export CLICKHOUSE_PASSWORD="$PASS"; export DATA_ANALYSIS_MIN_INTERVAL_SECONDS="$INTERVAL"; export ACCESS_LOGS_FETCH_LIMIT=3000000; export CLICKHOUSE_USE_TLS="False"\n\
@@ -81,11 +67,9 @@ while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done\n\
 cd /app/analyzer\n\
 exec ./api_discovery\n' > /etc/services.d/log-analyzer/run
 
-# 4. Prometheus 腳本 [cite: 72]
+# 4. Prometheus
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 exec /usr/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/data/prometheus --web.listen-address="0.0.0.0:9090"\n' > /etc/services.d/prometheus/run
 
-# 設定執行權限
 RUN chmod +x /etc/services.d/*/run
-
-# 注意：絕對不要加 CMD ["/init"]，因為基礎映像檔已經包含 Entrypoint 了 [cite: 12]
+# [重要] 絕對不要在此加上 CMD 或 ENTRYPOINT 指令

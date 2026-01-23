@@ -3,14 +3,13 @@ ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:7.3.0
 # 強制使用 Debian Base
 FROM ghcr.io/hassio-addons/debian-base:7.3.0
 
-# [關鍵修正] 安裝相依套件並加入 ClickHouse 官方來源
-# 1. 安裝 curl, gnupg 等工具
-# 2. 下載官方 GPG Key
-# 3. 加入官方 Repository
-# 4. 安裝最新版 clickhouse-server 與 client
+# [關鍵修正] 更新 ClickHouse 安裝來源
+# 1. 安裝必要工具
+# 2. 下載新的 GPG Key (修正連結錯誤 404)
+# 3. 設定 Repository
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl gnupg2 ca-certificates lsb-release \
-    && curl -fsSL 'https://packages.clickhouse.com/deb/KEY.GPG' | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg \
+    && curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" > /etc/apt/sources.list.d/clickhouse.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends clickhouse-server clickhouse-client \
@@ -18,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY rootfs /
 
-# [NUCLEAR OPTION] 建立啟動腳本 (保留之前的密碼修正邏輯)
+# [NUCLEAR OPTION] 建立啟動腳本 (保持先前的密碼修正邏輯不變)
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 PASSWORD=$(bashio::config "password")\n\
 MAX_MEM=$(bashio::config "max_memory_usage")\n\
@@ -40,11 +39,11 @@ if [ ! -d "/data/clickhouse" ]; then\n\
 fi\n\
 chown -R clickhouse:clickhouse /data/clickhouse\n\
 \n\
-# [核心修正] 刪除預設設定檔，避免任何合併衝突\n\
+# [核心修正] 刪除預設設定檔\n\
 rm -f /etc/clickhouse-server/users.xml\n\
 rm -rf /etc/clickhouse-server/users.d/*\n\
 \n\
-# 產生全新的 users.xml (包含 Profile, Quota 和 User)\n\
+# 產生全新的 users.xml\n\
 bashio::log.info "Generating fresh users.xml with configured password..."\n\
 cat > /etc/clickhouse-server/users.xml <<EOF\n\
 <clickhouse>\n\

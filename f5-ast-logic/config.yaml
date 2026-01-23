@@ -16,10 +16,10 @@ ports:
   9090/tcp: 19091    # Prometheus Metrics (改為 19091 避開衝突)
 
 options:
-  db_host: "192.168.1.X"   # NUC IP
-  db_port: 19000           # ClickHouse TCP Port
+  db_host: "172.16.132.2"   # NUC IP
+  db_port: 9000           # ClickHouse TCP Port
   db_user: "default"
-  db_password: "default_password"
+  db_password: "default"
   analyzer_interval: 300
 schema:
   db_host: str

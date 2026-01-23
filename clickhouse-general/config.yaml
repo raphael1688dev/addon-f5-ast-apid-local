@@ -13,13 +13,13 @@ map:
   - share:rw
 
 ports:
-  8123/tcp: 18123   # HTTP Port (Grafana 用)
-  9000/tcp: 19000   # TCP Port (Logic Add-on 用)
+  8123/tcp: 18123   # HTTP Port
+  9000/tcp: 19000   # TCP Port (給 Logic 連線用)
 
 options:
   password: "default_password"
-  max_memory_usage: 1000000000      # 1GB (單次查詢限制)
-  max_server_memory: 2000000000     # 2GB (伺服器總限制)
+  max_memory_usage: 1000000000
+  max_server_memory: 2000000000
 schema:
   password: str
   max_memory_usage: int

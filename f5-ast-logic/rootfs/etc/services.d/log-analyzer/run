@@ -1,0 +1,15 @@
+#!/usr/with-contenv bashio
+HOST=$(bashio::config 'db_host'); PORT=$(bashio::config 'db_port')
+PASS=$(bashio::config 'db_password'); INTERVAL=$(bashio::config 'analyzer_interval')
+
+export CLICKHOUSE_HOST="$HOST"
+export CLICKHOUSE_PORT="$PORT"
+export CLICKHOUSE_PASSWORD="$PASS"
+export DATA_ANALYSIS_MIN_INTERVAL_SECONDS="$INTERVAL"
+export ACCESS_LOGS_FETCH_LIMIT=3000000
+export CLICKHOUSE_USE_TLS="False" 
+
+while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done
+bashio::log.info "Starting Log Analyzer..."
+cd /app/analyzer
+exec python3 main.py

@@ -27,7 +27,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     clickhouse-client python3 netcat-openbsd curl bash \
     && rm -rf /var/lib/apt/lists/*
 
-# [FIX] 建立智慧型包裝指令，強制 clickhouse 指令連線到遠端 NUC
+# [關鍵修正] 建立「智慧包裝指令」，強制 clickhouse 指令連線到遠端 NUC
+# 這會自動將環境變數中的 HOST/PORT 塞給 clickhouse-client，解決 Connection refused
 RUN printf '#!/bin/bash\n\
 exec /usr/bin/clickhouse-client --host "$CLICKHOUSE_HOST" --port "$CLICKHOUSE_PORT" --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" "$@"\n' > /usr/bin/clickhouse \
     && chmod +x /usr/bin/clickhouse
@@ -45,7 +46,7 @@ COPY --from=fetcher /downloads/prometheus.yml /etc/prometheus/prometheus.yml
 COPY --from=fetcher /downloads/otel-config.yaml /etc/otel-collector/config.yaml
 COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 
-# 直接產生啟動服務，避開 PID 1 衝突
+# 建立服務資料夾
 RUN mkdir -p /etc/services.d/init-remote-db /etc/services.d/otel-collector /etc/services.d/log-analyzer /etc/services.d/prometheus
 
 # 1. 資料庫初始化腳本
@@ -80,4 +81,5 @@ exec ./api_discovery\n' > /etc/services.d/log-analyzer/run
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 exec /usr/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/data/prometheus --web.listen-address="0.0.0.0:9090"\n' > /etc/services.d/prometheus/run
 
+# 設定執行權限
 RUN chmod +x /etc/services.d/*/run

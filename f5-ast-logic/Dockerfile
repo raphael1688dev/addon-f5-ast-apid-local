@@ -22,7 +22,7 @@ FROM ghcr.io/f5devcentral/application-study-tool/otel_custom_collector:v0.7.0 as
 # --- Final Stage ---
 FROM ghcr.io/hassio-addons/debian-base:7.3.0
 
-# [關鍵修正] 加入 ClickHouse 官方來源並安裝最新版 Client
+# 安裝 ClickHouse 官方 Client
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl gnupg2 ca-certificates lsb-release python3 netcat-openbsd bash \
     && curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg \
@@ -31,11 +31,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends clickhouse-client \
     && rm -rf /var/lib/apt/lists/*
 
-# [重要] 智慧包裝指令 (保持不變)
-# 強制 clickhouse 指令連線到遠端 NUC
-RUN printf '#!/bin/bash\n\
-exec /usr/bin/clickhouse-client --host "$CLICKHOUSE_HOST" --port "$CLICKHOUSE_PORT" --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" "$@"\n' > /usr/bin/clickhouse \
-    && chmod +x /usr/bin/clickhouse
+# [關鍵修正] 移除原本的 Wrapper 腳本
+# 改用簡單的軟連結，避免 Shell Pipe 處理問題導致的卡頓
+RUN ln -s /usr/bin/clickhouse-client /usr/bin/clickhouse
 
 # 部署元件執行檔
 COPY --from=prometheus_source /bin/prometheus /usr/bin/prometheus
@@ -44,7 +42,7 @@ RUN chmod +x /usr/bin/otelcol-custom
 WORKDIR /app/analyzer
 COPY --from=analyzer_source /app/. .
 
-# 部署設定檔與資料庫腳本
+# 部署設定檔
 RUN mkdir -p /etc/prometheus /etc/otel-collector /app/sql /data/prometheus
 COPY --from=fetcher /downloads/prometheus.yml /etc/prometheus/prometheus.yml
 COPY --from=fetcher /downloads/otel-config.yaml /etc/otel-collector/config.yaml
@@ -54,6 +52,7 @@ COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 RUN mkdir -p /etc/services.d/init-remote-db /etc/services.d/otel-collector /etc/services.d/log-analyzer /etc/services.d/prometheus
 
 # 1. 資料庫初始化腳本
+# [重要] 這裡保留 export 環境變數，官方 Client 會自動讀取這些變數來連線
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port")\n\
 USER=$(bashio::config "db_user"); PASS=$(bashio::config "db_password")\n\

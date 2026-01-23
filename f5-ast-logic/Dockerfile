@@ -4,16 +4,13 @@ ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:7.3.0
 FROM alpine:latest as fetcher
 RUN apk add --no-cache curl jq
 WORKDIR /downloads
-
 RUN curl -o otel-config.yaml https://raw.githubusercontent.com/raphael1688/ast-api-discovery/refs/heads/main/services/otel_collector/config.yaml
 RUN curl -o prometheus.yml https://raw.githubusercontent.com/raphael1688/ast-api-discovery/refs/heads/main/services/prometheus/prometheus.yml
-
 RUN mkdir -p init_scripts
 WORKDIR /downloads/init_scripts
 RUN curl -s "https://api.github.com/repos/raphael1688/ast-api-discovery/contents/services/clickhouse/docker-entrypoint-initdb.d?ref=main" \
     | jq -r '.[].name' \
     | while read filename; do \
-        echo "Downloading $filename..."; \
         curl -O "https://raw.githubusercontent.com/raphael1688/ast-api-discovery/refs/heads/main/services/clickhouse/docker-entrypoint-initdb.d/$filename"; \
       done
 
@@ -25,25 +22,28 @@ FROM ghcr.io/f5devcentral/application-study-tool/otel_custom_collector:v0.7.0 as
 # --- Final Stage ---
 FROM ghcr.io/hassio-addons/debian-base:7.3.0
 
+# 安裝必要套件 (不需 pip3，因為 analyzer 是編譯好的執行檔)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     clickhouse-client python3 netcat-openbsd curl bash \
     && rm -rf /var/lib/apt/lists/*
 
+# 部署元件執行檔
 COPY --from=prometheus_source /bin/prometheus /usr/bin/prometheus
 COPY --from=collector_source /otelcol-custom /usr/bin/otelcol-custom
 RUN chmod +x /usr/bin/otelcol-custom
-
 WORKDIR /app/analyzer
 COPY --from=analyzer_source /app/. .
 
+# 部署設定檔與資料庫腳本
 RUN mkdir -p /etc/prometheus /etc/otel-collector /app/sql /data/prometheus
 COPY --from=fetcher /downloads/prometheus.yml /etc/prometheus/prometheus.yml
 COPY --from=fetcher /downloads/otel-config.yaml /etc/otel-collector/config.yaml
 COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 
+# 直接產生啟動服務，避開 PID 1 衝突與 Windows 換行符號問題
 RUN mkdir -p /etc/services.d/init-remote-db /etc/services.d/otel-collector /etc/services.d/log-analyzer /etc/services.d/prometheus
 
-# 1. Init DB 腳本
+# 1. 資料庫初始化腳本
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port")\n\
 USER=$(bashio::config "db_user"); PASS=$(bashio::config "db_password")\n\
@@ -75,4 +75,5 @@ exec ./api_discovery\n' > /etc/services.d/log-analyzer/run
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 exec /usr/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/data/prometheus --web.listen-address="0.0.0.0:9090"\n' > /etc/services.d/prometheus/run
 
+# 設定執行權限且不加 CMD 指令
 RUN chmod +x /etc/services.d/*/run

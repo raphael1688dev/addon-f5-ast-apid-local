@@ -1,7 +1,7 @@
 name: "F5 AST Logic"
 version: "0.1.0"
 slug: "f5_ast_logic"
-description: "Core logic. Requires 'General ClickHouse' installed."
+description: "Core logic. Requires 'General ClickHouse'. Prometheus on port 19091."
 arch:
   - amd64
 startup: services
@@ -11,11 +11,11 @@ map:
 
 ports:
   514/udp: 1514      # Syslog (F5 HSL Target)
-  9090/tcp: 19090    # Prometheus Metrics
+  9090/tcp: 19091    # Prometheus Metrics (改為 19091 避開衝突)
 
 options:
-  db_host: "192.168.1.X"   # 使用者 NUC IP
-  db_port: 19000           # 必須對應 ClickHouse TCP Port
+  db_host: "192.168.1.X"   # NUC IP
+  db_port: 19000           # ClickHouse TCP Port
   db_user: "default"
   db_password: "default_password"
   analyzer_interval: 300

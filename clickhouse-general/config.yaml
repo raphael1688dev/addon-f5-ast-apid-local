@@ -1,0 +1,26 @@
+name: "General ClickHouse"
+version: "24.8.4"
+slug: "general_clickhouse"
+description: "Standalone ClickHouse DB optimized for local NUC deployment."
+arch:
+  - amd64
+startup: services
+boot: auto
+init: false
+privileged: true
+map:
+  - config:rw
+  - share:rw
+
+ports:
+  8123/tcp: 18123   # HTTP Port (Grafana 用)
+  9000/tcp: 19000   # TCP Port (Logic Add-on 用)
+
+options:
+  password: "default_password"
+  max_memory_usage: 1000000000      # 1GB (單次查詢限制)
+  max_server_memory: 2000000000     # 2GB (伺服器總限制)
+schema:
+  password: str
+  max_memory_usage: int
+  max_server_memory: int

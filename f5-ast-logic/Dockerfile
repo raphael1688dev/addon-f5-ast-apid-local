@@ -27,8 +27,6 @@ FROM ghcr.io/f5devcentral/application-study-tool/otel_custom_collector:v0.7.0 as
 # --- Final Stage ---
 FROM ghcr.io/hassio-addons/debian-base:7.3.0
 
-# 雖然 Analyzer 是 Binary，但我們還是保留 python3 供 .sh 腳本或其他工具使用
-# 移除 pip 安裝步驟，因為不需要了
 RUN apt-get update && apt-get install -y --no-install-recommends \
     clickhouse-client python3 netcat-openbsd curl bash \
     && rm -rf /var/lib/apt/lists/*
@@ -40,10 +38,7 @@ RUN chmod +x /usr/bin/otelcol-custom
 
 # Deploy Analyzer Binary
 WORKDIR /app/analyzer
-# 複製資料夾內容 (包含 api_discovery 執行檔)
 COPY --from=analyzer_source /app/. .
-
-# [UPDATE] 移除了 pip install，因為沒有 requirements.txt
 
 # Deploy Configs & Scripts
 RUN mkdir -p /etc/prometheus /etc/otel-collector /app/sql /data/prometheus
@@ -53,4 +48,5 @@ COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 
 COPY rootfs /
 RUN chmod +x /etc/services.d/*/run
-CMD [ "/init" ]
+
+# [FIX] 移除了 CMD [ "/init" ]，因為 Base Image 已經包含了

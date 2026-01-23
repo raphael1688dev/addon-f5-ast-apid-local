@@ -5,11 +5,11 @@ FROM alpine:latest as fetcher
 RUN apk add --no-cache curl jq
 WORKDIR /downloads
 
-# 1. 下載您的 Config (OTel & Prometheus)
+# 1. 下載您的 Config (OTel & Prometheus) - 來源: raphael1688
 RUN curl -o otel-config.yaml https://raw.githubusercontent.com/raphael1688/ast-api-discovery/refs/heads/main/services/otel_collector/config.yaml
 RUN curl -o prometheus.yml https://raw.githubusercontent.com/raphael1688/ast-api-discovery/refs/heads/main/services/prometheus/prometheus.yml
 
-# 2. 自動下載所有初始化腳本 (.sh)
+# 2. 自動下載所有初始化腳本 (.sh) - 來源: raphael1688
 RUN mkdir -p init_scripts
 WORKDIR /downloads/init_scripts
 RUN curl -s "https://api.github.com/repos/raphael1688/ast-api-discovery/contents/services/clickhouse/docker-entrypoint-initdb.d?ref=main" \

@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY rootfs /
 
-# [關鍵修正] 在啟動腳本中加入密碼設定邏輯
+# [NUCLEAR FIX] 建立啟動腳本
+# 這次改用 users.d 覆蓋法，保證密碼一定生效
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 PASSWORD=$(bashio::config "password")\n\
 MAX_MEM=$(bashio::config "max_memory_usage")\n\
@@ -32,13 +33,24 @@ if [ ! -d "/data/clickhouse" ]; then\n\
     mkdir -p /data/clickhouse\n\
 fi\n\
 \n\
-# [FIX] 強制將密碼寫入 users.xml\n\
-# 我們使用 sed 替換預設的空密碼標籤\n\
+# [關鍵修正] 使用 users.d 強制覆蓋密碼\n\
+# 我們建立一個獨立的設定檔，利用 ClickHouse 的 merge 機制移除舊密碼並設定新密碼\n\
 if [ ! -z "$PASSWORD" ]; then\n\
-    bashio::log.info "Applying configured password to ClickHouse users.xml..."\n\
-    sed -i "s|<password></password>|<password>$PASSWORD</password>|g" /etc/clickhouse-server/users.xml\n\
-    # 預防性措施：如果使用了 SHA256 格式，也嘗試替換 (視版本而定)\n\
-    sed -i "s|<password_sha256_hex>.*</password_sha256_hex>|<password>$PASSWORD</password>|g" /etc/clickhouse-server/users.xml\n\
+    bashio::log.info "Creating password config in users.d/set_password.xml..."\n\
+    mkdir -p /etc/clickhouse-server/users.d\n\
+    cat > /etc/clickhouse-server/users.d/set_password.xml <<EOF\n\
+<clickhouse>\n\
+    <users>\n\
+        <default>\n\
+            \n\
+            <password remove="1" />\n\
+            <password_sha256_hex remove="1" />\n\
+            \n\
+            <password>$PASSWORD</password>\n\
+        </default>\n\
+    </users>\n\
+</clickhouse>\n\
+EOF\n\
 fi\n\
 \n\
 # 強制開啟控制台日誌\n\

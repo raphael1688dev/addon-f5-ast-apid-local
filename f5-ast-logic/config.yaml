@@ -1,5 +1,5 @@
 name: "F5 AST Logic"
-version: "0.1.0-28"
+version: "0.1.0-29"
 slug: "f5_ast_logic"
 description: "Core logic for F5 AST API Discovery"
 url: "https://github.com/raphael1688/ast-api-discovery"
@@ -14,7 +14,7 @@ ports:
   # [重要] 開放 UDP 54526 讓 F5 傳送 Syslog
   54526/udp: 54526
   # Prometheus 介面 (可選，除錯用)
-  9090/tcp: 9090
+  9090/tcp: 19090
 options:
   # 請填寫 General ClickHouse 的 IP (例如 172.16.x.x 或主機 IP)
   db_host: "172.16.132.2"

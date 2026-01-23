@@ -27,10 +27,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     clickhouse-client python3 netcat-openbsd curl bash \
     && rm -rf /var/lib/apt/lists/*
 
-# [FIX] 建立軟連結，讓腳本能用 clickhouse 指令執行 clickhouse-client
-RUN ln -s /usr/bin/clickhouse-client /usr/bin/clickhouse
+# [FIX] 建立智慧型包裝指令，強制 clickhouse 指令連線到遠端 NUC
+RUN printf '#!/bin/bash\n\
+exec /usr/bin/clickhouse-client --host "$CLICKHOUSE_HOST" --port "$CLICKHOUSE_PORT" --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" "$@"\n' > /usr/bin/clickhouse \
+    && chmod +x /usr/bin/clickhouse
 
-# 部署執行檔
+# 部署元件執行檔
 COPY --from=prometheus_source /bin/prometheus /usr/bin/prometheus
 COPY --from=collector_source /otelcol-custom /usr/bin/otelcol-custom
 RUN chmod +x /usr/bin/otelcol-custom

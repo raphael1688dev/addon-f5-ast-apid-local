@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY rootfs /
 
-# [NUCLEAR FIX v4] 加入 Console Logging 設定
+# [關鍵修正] 在啟動腳本中加入密碼設定邏輯
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 PASSWORD=$(bashio::config "password")\n\
 MAX_MEM=$(bashio::config "max_memory_usage")\n\
@@ -32,7 +32,16 @@ if [ ! -d "/data/clickhouse" ]; then\n\
     mkdir -p /data/clickhouse\n\
 fi\n\
 \n\
-# [NEW] 強制開啟控制台日誌 (讓我們能在 HA 看到輸出)\n\
+# [FIX] 強制將密碼寫入 users.xml\n\
+# 我們使用 sed 替換預設的空密碼標籤\n\
+if [ ! -z "$PASSWORD" ]; then\n\
+    bashio::log.info "Applying configured password to ClickHouse users.xml..."\n\
+    sed -i "s|<password></password>|<password>$PASSWORD</password>|g" /etc/clickhouse-server/users.xml\n\
+    # 預防性措施：如果使用了 SHA256 格式，也嘗試替換 (視版本而定)\n\
+    sed -i "s|<password_sha256_hex>.*</password_sha256_hex>|<password>$PASSWORD</password>|g" /etc/clickhouse-server/users.xml\n\
+fi\n\
+\n\
+# 強制開啟控制台日誌\n\
 cat > /etc/clickhouse-server/config.d/console_log.xml <<EOF\n\
 <clickhouse>\n\
     <logger>\n\
@@ -54,7 +63,6 @@ EOF\n\
 \n\
 chown -R clickhouse:clickhouse /data/clickhouse\n\
 bashio::log.info "Starting ClickHouse..."\n\
-# 執行 Server\n\
 exec s6-setuidgid clickhouse "$BINARY" --config-file=/etc/clickhouse-server/config.xml\n\
 ' > /etc/services.d/clickhouse/run
 

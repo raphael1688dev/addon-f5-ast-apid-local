@@ -1,5 +1,5 @@
 name: "F5 AST Logic"
-version: "0.1.0-25"
+version: "0.1.0-26"
 slug: "f5_ast_logic"
 description: "Core logic. Requires 'General ClickHouse'. Prometheus on port 19091."
 arch:

@@ -8,15 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     clickhouse-server clickhouse-client curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 複製其他設定檔 (XML 等)
 COPY rootfs /
 
-# 建立資料夾並設定權限
-RUN mkdir -p /data/clickhouse \
-    && chown -R clickhouse:clickhouse /data/clickhouse
-
-# [NUCLEAR FIX] 直接用 printf 產生 run 腳本，避開所有換行與路徑問題
-# 注意：這裡修正了 Shebang 為 /usr/bin/with-contenv
+# [NUCLEAR FIX v2] 直接用 printf 產生 run 腳本
+# 這次加入了 "mkdir -p /data/clickhouse" 到啟動流程中
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 PASSWORD=$(bashio::config "password")\n\
 MAX_MEM=$(bashio::config "max_memory_usage")\n\
@@ -24,6 +19,13 @@ MAX_SERVER_MEM=$(bashio::config "max_server_memory")\n\
 \n\
 export CLICKHOUSE_PASSWORD="$PASSWORD"\n\
 \n\
+# [CRITICAL FIX] 確保資料夾在 Runtime 存在 (因為 /data 是掛載的)\n\
+if [ ! -d "/data/clickhouse" ]; then\n\
+    bashio::log.info "Creating data directory..."\n\
+    mkdir -p /data/clickhouse\n\
+fi\n\
+\n\
+# 設定效能參數\n\
 cat > /etc/clickhouse-server/config.d/tuning.xml <<EOF\n\
 <clickhouse>\n\
     <max_memory_usage>$MAX_MEM</max_memory_usage>\n\

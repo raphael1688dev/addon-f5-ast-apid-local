@@ -71,7 +71,6 @@ touch "/data/db_initialized.flag"\n\
 bashio::log.info "Database initialized successfully."\n' > /etc/services.d/init-remote-db/run
 
 # 2. OTel Collector 腳本
-# 包含 prometheus -> localhost 的修正
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password")\n\
 export OTEL_COLLECTOR_CLICKHOUSE_PASSWORD="$PASS"\n\
@@ -111,7 +110,7 @@ cd /app/analyzer\n\
 exec ./api_discovery\n' > /etc/services.d/log-analyzer/run
 
 # 4. Prometheus 腳本
-# [關鍵修正] 改用 enable-feature=otlp-write-receiver (適用於 v2.54)
+# [關鍵] 使用 enable-feature=otlp-write-receiver 支援 v2.54 版
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 exec /usr/bin/prometheus \
     --config.file=/etc/prometheus/prometheus.yml \

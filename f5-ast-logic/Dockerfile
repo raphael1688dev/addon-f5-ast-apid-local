@@ -22,24 +22,31 @@ FROM ghcr.io/f5devcentral/application-study-tool/otel_custom_collector:v0.7.0 as
 # --- Final Stage ---
 FROM ghcr.io/hassio-addons/debian-base:7.3.0
 
+# 安裝必要套件
 RUN apt-get update && apt-get install -y --no-install-recommends \
     clickhouse-client python3 netcat-openbsd curl bash \
     && rm -rf /var/lib/apt/lists/*
 
+# [FIX] 建立軟連結，讓腳本能用 clickhouse 指令執行 clickhouse-client
+RUN ln -s /usr/bin/clickhouse-client /usr/bin/clickhouse
+
+# 部署執行檔
 COPY --from=prometheus_source /bin/prometheus /usr/bin/prometheus
 COPY --from=collector_source /otelcol-custom /usr/bin/otelcol-custom
 RUN chmod +x /usr/bin/otelcol-custom
 WORKDIR /app/analyzer
 COPY --from=analyzer_source /app/. .
 
+# 部署設定檔與資料庫腳本
 RUN mkdir -p /etc/prometheus /etc/otel-collector /app/sql /data/prometheus
 COPY --from=fetcher /downloads/prometheus.yml /etc/prometheus/prometheus.yml
 COPY --from=fetcher /downloads/otel-config.yaml /etc/otel-collector/config.yaml
 COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 
+# 直接產生啟動服務，避開 PID 1 衝突
 RUN mkdir -p /etc/services.d/init-remote-db /etc/services.d/otel-collector /etc/services.d/log-analyzer /etc/services.d/prometheus
 
-# 1. Init DB
+# 1. 資料庫初始化腳本
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port")\n\
 USER=$(bashio::config "db_user"); PASS=$(bashio::config "db_password")\n\
@@ -51,7 +58,7 @@ for f in /app/sql/*; do [ -f "$f" ] || continue; chmod +x "$f"; bashio::log.info
 touch "/data/db_initialized.flag"\n\
 s6-svc -d /var/run/s6/services/init-remote-db\n' > /etc/services.d/init-remote-db/run
 
-# 2. OTel Collector
+# 2. OTel Collector 腳本
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password")\n\
 export OTEL_COLLECTOR_CLICKHOUSE_PASSWORD="$PASS"\n\
@@ -59,7 +66,7 @@ sed -i "s|endpoint: tcp://.*:9000|endpoint: tcp://$HOST:$PORT|g" /etc/otel-colle
 while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done\n\
 exec /usr/bin/otelcol-custom --config=/etc/otel-collector/config.yaml\n' > /etc/services.d/otel-collector/run
 
-# 3. Log Analyzer
+# 3. Log Analyzer 腳本
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password"); INTERVAL=$(bashio::config "analyzer_interval")\n\
 export CLICKHOUSE_HOST="$HOST"; export CLICKHOUSE_PORT="$PORT"; export CLICKHOUSE_PASSWORD="$PASS"; export DATA_ANALYSIS_MIN_INTERVAL_SECONDS="$INTERVAL"; export ACCESS_LOGS_FETCH_LIMIT=3000000; export CLICKHOUSE_USE_TLS="False"\n\
@@ -67,9 +74,8 @@ while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done\n\
 cd /app/analyzer\n\
 exec ./api_discovery\n' > /etc/services.d/log-analyzer/run
 
-# 4. Prometheus
+# 4. Prometheus 腳本
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 exec /usr/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/data/prometheus --web.listen-address="0.0.0.0:9090"\n' > /etc/services.d/prometheus/run
 
 RUN chmod +x /etc/services.d/*/run
-# [重要] 絕對不要在此加上 CMD 或 ENTRYPOINT 指令

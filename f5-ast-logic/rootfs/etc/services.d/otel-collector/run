@@ -4,7 +4,6 @@ PASS=$(bashio::config 'db_password')
 
 export OTEL_COLLECTOR_CLICKHOUSE_PASSWORD="$PASS"
 
-# 將 Config 內的 clickhouse:9000 替換成使用者設定的位址
 sed -i "s|endpoint: tcp://.*:9000|endpoint: tcp://$HOST:$PORT|g" /etc/otel-collector/config.yaml
 
 while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done

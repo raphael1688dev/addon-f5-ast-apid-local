@@ -1,0 +1,20 @@
+#!/usr/with-contenv bashio
+PASSWORD=$(bashio::config 'password')
+MAX_MEM=$(bashio::config 'max_memory_usage')
+MAX_SERVER_MEM=$(bashio::config 'max_server_memory')
+
+export CLICKHOUSE_PASSWORD="$PASSWORD"
+
+# NUC 效能調教
+cat > /etc/clickhouse-server/config.d/tuning.xml <<EOF
+<clickhouse>
+    <max_memory_usage>$MAX_MEM</max_memory_usage>
+    <max_server_memory_usage>$MAX_SERVER_MEM</max_server_memory_usage>
+    <max_threads>4</max_threads>
+    <background_pool_size>4</background_pool_size>
+</clickhouse>
+EOF
+
+chown -R clickhouse:clickhouse /data/clickhouse
+bashio::log.info "Starting ClickHouse..."
+exec s6-setuidgid clickhouse /usr/bin/clickhouse-server --config-file=/etc/clickhouse-server/config.xml

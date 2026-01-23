@@ -1,5 +1,5 @@
 name: "F5 AST Logic"
-version: "0.1.0-29"
+version: "0.1.0-30"
 slug: "f5_ast_logic"
 description: "Core logic for F5 AST API Discovery"
 url: "https://github.com/raphael1688/ast-api-discovery"

@@ -22,7 +22,7 @@ FROM ghcr.io/f5devcentral/application-study-tool/otel_custom_collector:v0.7.0 as
 # --- Final Stage ---
 FROM ghcr.io/hassio-addons/debian-base:7.3.0
 
-# 安裝 ClickHouse Client
+# 安裝 ClickHouse Client (官方源)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl gnupg2 ca-certificates lsb-release python3 netcat-openbsd bash \
     && curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg \
@@ -31,10 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends clickhouse-client \
     && rm -rf /var/lib/apt/lists/*
 
-# 建立軟連結 (避開 /usr/bin 衝突，利用 PATH 優先權)
-RUN ln -s /usr/bin/clickhouse-client /usr/local/bin/clickhouse
-
-# 部署元件執行檔
+# 部署元件
 COPY --from=prometheus_source /bin/prometheus /usr/bin/prometheus
 COPY --from=collector_source /otelcol-custom /usr/bin/otelcol-custom
 RUN chmod +x /usr/bin/otelcol-custom
@@ -50,8 +47,8 @@ COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 # 建立服務資料夾
 RUN mkdir -p /etc/services.d/init-remote-db /etc/services.d/otel-collector /etc/services.d/log-analyzer /etc/services.d/prometheus
 
-# 1. 資料庫初始化腳本 [關鍵修改]
-# 啟動時自動產生 client config.xml，強制指定 Port，解決 Connection refused 問題
+# 1. 資料庫初始化腳本
+# 自動產生 config.xml 讓 CLI 工具能順利連線
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port")\n\
 USER=$(bashio::config "db_user"); PASS=$(bashio::config "db_password")\n\
@@ -59,7 +56,6 @@ if [ -f "/data/db_initialized.flag" ]; then s6-svc -d /var/run/s6/services/init-
 bashio::log.info "Waiting for ClickHouse at $HOST:$PORT..."\n\
 while ! nc -z "$HOST" "$PORT"; do sleep 2; done\n\
 \n\
-# [FIX] 產生 ClickHouse Client 設定檔\n\
 mkdir -p /etc/clickhouse-client\n\
 cat > /etc/clickhouse-client/config.xml <<EOF\n\
 <config>\n\
@@ -68,7 +64,6 @@ cat > /etc/clickhouse-client/config.xml <<EOF\n\
     <user>$USER</user>\n\
     <password>$PASS</password>\n\
 </config>\n\
-EOF\n\
 \n\
 bashio::log.info "Running SQL initialization scripts..."\n\
 for f in /app/sql/*; do [ -f "$f" ] || continue; chmod +x "$f"; bashio::log.info "Running $f"; /bin/bash "$f"; done\n\
@@ -76,14 +71,26 @@ touch "/data/db_initialized.flag"\n\
 s6-svc -d /var/run/s6/services/init-remote-db\n' > /etc/services.d/init-remote-db/run
 
 # 2. OTel Collector 腳本
+# [關鍵修正] 1. 匯出 CLICKHOUSE_PASSWORD 變數
+# [關鍵修正] 2. 使用 sed 移除 TLS 憑證設定，避免啟動失敗
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password")\n\
 export OTEL_COLLECTOR_CLICKHOUSE_PASSWORD="$PASS"\n\
+export CLICKHOUSE_PASSWORD="$PASS"\n\
+\n\
+# 修正 Endpoint\n\
 sed -i "s|endpoint: tcp://.*:9000|endpoint: tcp://$HOST:$PORT|g" /etc/otel-collector/config.yaml\n\
+\n\
+# [Fix TLS Error] 註解掉 ca_file, cert_file, key_file\n\
+sed -i "s|ca_file:|# ca_file:|g" /etc/otel-collector/config.yaml\n\
+sed -i "s|cert_file:|# cert_file:|g" /etc/otel-collector/config.yaml\n\
+sed -i "s|key_file:|# key_file:|g" /etc/otel-collector/config.yaml\n\
+\n\
 while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done\n\
 exec /usr/bin/otelcol-custom --config=/etc/otel-collector/config.yaml\n' > /etc/services.d/otel-collector/run
 
 # 3. Log Analyzer 腳本
+# 直接連線到 9000 埠
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password"); INTERVAL=$(bashio::config "analyzer_interval")\n\
 export CLICKHOUSE_HOST="$HOST"; export CLICKHOUSE_PORT="$PORT"; export CLICKHOUSE_PASSWORD="$PASS"; export DATA_ANALYSIS_MIN_INTERVAL_SECONDS="$INTERVAL"; export ACCESS_LOGS_FETCH_LIMIT=3000000; export CLICKHOUSE_USE_TLS="False"\n\

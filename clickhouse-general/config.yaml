@@ -1,8 +1,8 @@
 name: "General ClickHouse"
-version: "25.12.4.35-debug-3"
+version: "25.12.4.35-debug-4"
 slug: "general_clickhouse"
 description: "ClickHouse OLAP Database (Official)"
-url: "https://github.com/raphael1688/ast-api-discovery"
+# image: ... (記得這行要刪掉或註解，如上一步所述)
 arch:
   - amd64
 startup: services
@@ -12,8 +12,10 @@ map:
   - config:rw
   - share:rw
 ports:
-  8123/tcp: 8123
-  9000/tcp: 9000  # [修正] 改回標準的 9000
+  # [關鍵修正] 將容器的 8123 對應到主機的 18123 (避開 HA 本身的 8123)
+  8123/tcp: 18123
+  # 9000 是 F5 AST Logic 連線用的，維持不變
+  9000/tcp: 9000
   9009/tcp: 9009
 options:
   password: "default"
@@ -23,5 +25,3 @@ schema:
   password: str
   max_memory_usage: int
   max_server_memory: int
-# [關鍵修正] 請務必刪除或註解掉下面這一行 image 設定
-# image: "ghcr.io/hassio-addons/debian-base"

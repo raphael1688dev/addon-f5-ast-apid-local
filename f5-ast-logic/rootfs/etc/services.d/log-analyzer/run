@@ -11,5 +11,8 @@ export CLICKHOUSE_USE_TLS="False"
 
 while [ ! -f "/data/db_initialized.flag" ]; do sleep 2; done
 bashio::log.info "Starting Log Analyzer..."
+
 cd /app/analyzer
-exec python3 main.py
+
+# [FIX] 執行編譯好的 Binary，而不是 python script
+exec ./api_discovery

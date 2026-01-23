@@ -1,5 +1,5 @@
 name: "General ClickHouse"
-version: "25.12.4.35-debug-2"
+version: "25.12.4.35-debug-3"
 slug: "general_clickhouse"
 description: "ClickHouse OLAP Database (Official)"
 url: "https://github.com/raphael1688/ast-api-discovery"
@@ -23,4 +23,5 @@ schema:
   password: str
   max_memory_usage: int
   max_server_memory: int
-image: "ghcr.io/hassio-addons/debian-base"
+# [關鍵修正] 請務必刪除或註解掉下面這一行 image 設定
+# image: "ghcr.io/hassio-addons/debian-base"

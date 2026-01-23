@@ -3,10 +3,7 @@ ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:7.3.0
 # 強制使用 Debian Base
 FROM ghcr.io/hassio-addons/debian-base:7.3.0
 
-# [關鍵修正] 更新 ClickHouse 安裝來源
-# 1. 安裝必要工具
-# 2. 下載新的 GPG Key (修正連結錯誤 404)
-# 3. 設定 Repository
+# 更新 ClickHouse 安裝來源 (維持使用最新版)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl gnupg2 ca-certificates lsb-release \
     && curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg \
@@ -17,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY rootfs /
 
-# [NUCLEAR OPTION] 建立啟動腳本 (保持先前的密碼修正邏輯不變)
+# [NUCLEAR OPTION] 建立啟動腳本
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 PASSWORD=$(bashio::config "password")\n\
 MAX_MEM=$(bashio::config "max_memory_usage")\n\
@@ -44,12 +41,14 @@ rm -f /etc/clickhouse-server/users.xml\n\
 rm -rf /etc/clickhouse-server/users.d/*\n\
 \n\
 # 產生全新的 users.xml\n\
-bashio::log.info "Generating fresh users.xml with configured password..."\n\
+# [FIX] 將 max_memory_usage 正確放置於 profiles/default 下\n\
+bashio::log.info "Generating fresh users.xml with configured password and limits..."\n\
 cat > /etc/clickhouse-server/users.xml <<EOF\n\
 <clickhouse>\n\
     <profiles>\n\
         <default>\n\
-            <max_memory_usage>10000000000</max_memory_usage>\n\
+            \n\
+            <max_memory_usage>$MAX_MEM</max_memory_usage>\n\
             <use_uncompressed_cache>0</use_uncompressed_cache>\n\
             <load_balancing>random</load_balancing>\n\
         </default>\n\
@@ -83,12 +82,15 @@ cat > /etc/clickhouse-server/users.xml <<EOF\n\
 </clickhouse>\n\
 EOF\n\
 \n\
-# 產生效能與日誌設定\n\
+# [FIX] 產生 tuning.xml\n\
+# 移除 max_memory_usage (因為它是 User Setting)\n\
+# 保留 max_server_memory_usage (因為它是 Server Setting)\n\
 cat > /etc/clickhouse-server/config.d/tuning.xml <<EOF\n\
 <clickhouse>\n\
-    <max_memory_usage>$MAX_MEM</max_memory_usage>\n\
     <max_server_memory_usage>$MAX_SERVER_MEM</max_server_memory_usage>\n\
     <logger><console>1</console><level>information</level></logger>\n\
+    \n\
+    <listen_host>0.0.0.0</listen_host>\n\
 </clickhouse>\n\
 EOF\n\
 \n\

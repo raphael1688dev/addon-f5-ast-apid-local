@@ -1,29 +1,26 @@
 name: "General ClickHouse"
-version: "25.12.4.35-debug-1"
+version: "25.12.4.35-debug-2"
 slug: "general_clickhouse"
-description: "Standalone ClickHouse DB optimized for local NUC deployment."
+description: "ClickHouse OLAP Database (Official)"
+url: "https://github.com/raphael1688/ast-api-discovery"
 arch:
   - amd64
 startup: services
 boot: auto
 init: false
-# [FIXED] 修正這裡：privileged 改為具體的權限列表
-privileged:
-  - SYS_NICE
-  - IPC_LOCK
 map:
   - config:rw
   - share:rw
-
 ports:
-  8123/tcp: 18123
-  9000/tcp: 19000
-
+  8123/tcp: 8123
+  9000/tcp: 9000  # [修正] 改回標準的 9000
+  9009/tcp: 9009
 options:
-  password: "default_password"
-  max_memory_usage: 1000000000
-  max_server_memory: 2000000000
+  password: "default"
+  max_memory_usage: 10000000000
+  max_server_memory: 10000000000
 schema:
   password: str
   max_memory_usage: int
   max_server_memory: int
+image: "ghcr.io/hassio-addons/debian-base"

@@ -1,0 +1,5 @@
+#!/usr/with-contenv bashio
+exec /usr/bin/prometheus \
+    --config.file=/etc/prometheus/prometheus.yml \
+    --storage.tsdb.path=/data/prometheus \
+    --web.listen-address="0.0.0.0:9090"

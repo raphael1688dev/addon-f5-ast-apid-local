@@ -5,11 +5,11 @@ FROM alpine:latest as fetcher
 RUN apk add --no-cache curl jq
 WORKDIR /downloads
 
-# 1. 下載您的 Config (OTel & Prometheus) - 來源: raphael1688
+# 1. 下載您的 Config (OTel & Prometheus)
 RUN curl -o otel-config.yaml https://raw.githubusercontent.com/raphael1688/ast-api-discovery/refs/heads/main/services/otel_collector/config.yaml
 RUN curl -o prometheus.yml https://raw.githubusercontent.com/raphael1688/ast-api-discovery/refs/heads/main/services/prometheus/prometheus.yml
 
-# 2. 自動下載所有初始化腳本 (.sh) - 來源: raphael1688
+# 2. 自動下載所有初始化腳本 (.sh)
 RUN mkdir -p init_scripts
 WORKDIR /downloads/init_scripts
 RUN curl -s "https://api.github.com/repos/raphael1688/ast-api-discovery/contents/services/clickhouse/docker-entrypoint-initdb.d?ref=main" \
@@ -25,7 +25,9 @@ FROM ghcr.io/f5devcentral/ast-api-discovery/api_discovery_log_analyzer:v0.2.0 as
 FROM ghcr.io/f5devcentral/application-study-tool/otel_custom_collector:v0.7.0 as collector_source
 
 # --- Final Stage ---
-FROM $BUILD_FROM
+# [CRITICAL FIX] 強制使用 Debian Base，忽略 Supervisor 傳入的 Alpine Base
+FROM ghcr.io/hassio-addons/debian-base:7.3.0
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     clickhouse-client python3 python3-pip netcat-openbsd curl bash \
     && rm -rf /var/lib/apt/lists/*

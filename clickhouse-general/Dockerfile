@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY rootfs /
 
-# [NUCLEAR FIX v2] 直接用 printf 產生 run 腳本
-# 這次加入了 "mkdir -p /data/clickhouse" 到啟動流程中
+# [NUCLEAR FIX v3] 自動偵測執行檔路徑
+# 加入了偵測邏輯：優先找 /usr/sbin/clickhouse-server
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 PASSWORD=$(bashio::config "password")\n\
 MAX_MEM=$(bashio::config "max_memory_usage")\n\
@@ -19,7 +19,15 @@ MAX_SERVER_MEM=$(bashio::config "max_server_memory")\n\
 \n\
 export CLICKHOUSE_PASSWORD="$PASSWORD"\n\
 \n\
-# [CRITICAL FIX] 確保資料夾在 Runtime 存在 (因為 /data 是掛載的)\n\
+# 自動尋找 clickhouse-server 執行檔位置\n\
+if [ -f "/usr/sbin/clickhouse-server" ]; then\n\
+    BINARY="/usr/sbin/clickhouse-server"\n\
+else\n\
+    BINARY="/usr/bin/clickhouse-server"\n\
+fi\n\
+bashio::log.info "Found ClickHouse binary at: $BINARY"\n\
+\n\
+# 確保資料夾在 Runtime 存在\n\
 if [ ! -d "/data/clickhouse" ]; then\n\
     bashio::log.info "Creating data directory..."\n\
     mkdir -p /data/clickhouse\n\
@@ -37,7 +45,7 @@ EOF\n\
 \n\
 chown -R clickhouse:clickhouse /data/clickhouse\n\
 bashio::log.info "Starting ClickHouse..."\n\
-exec s6-setuidgid clickhouse /usr/bin/clickhouse-server --config-file=/etc/clickhouse-server/config.xml\n\
+exec s6-setuidgid clickhouse "$BINARY" --config-file=/etc/clickhouse-server/config.xml\n\
 ' > /etc/services.d/clickhouse/run
 
 # 給予執行權限

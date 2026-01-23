@@ -22,7 +22,7 @@ FROM ghcr.io/f5devcentral/application-study-tool/otel_custom_collector:v0.7.0 as
 # --- Final Stage ---
 FROM ghcr.io/hassio-addons/debian-base:7.3.0
 
-# 安裝 ClickHouse 官方 Client
+# 安裝 ClickHouse Client
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl gnupg2 ca-certificates lsb-release python3 netcat-openbsd bash \
     && curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg \
@@ -31,8 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends clickhouse-client \
     && rm -rf /var/lib/apt/lists/*
 
-# [關鍵修正] 建立軟連結至 /usr/local/bin
-# 避開 /usr/bin/clickhouse 檔案已存在的錯誤，並利用 PATH 優先權讓腳本正確呼叫 Client
+# 建立軟連結 (避開 /usr/bin 衝突，利用 PATH 優先權)
 RUN ln -s /usr/bin/clickhouse-client /usr/local/bin/clickhouse
 
 # 部署元件執行檔
@@ -51,14 +50,27 @@ COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 # 建立服務資料夾
 RUN mkdir -p /etc/services.d/init-remote-db /etc/services.d/otel-collector /etc/services.d/log-analyzer /etc/services.d/prometheus
 
-# 1. 資料庫初始化腳本
+# 1. 資料庫初始化腳本 [關鍵修改]
+# 啟動時自動產生 client config.xml，強制指定 Port，解決 Connection refused 問題
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port")\n\
 USER=$(bashio::config "db_user"); PASS=$(bashio::config "db_password")\n\
 if [ -f "/data/db_initialized.flag" ]; then s6-svc -d /var/run/s6/services/init-remote-db; exit 0; fi\n\
 bashio::log.info "Waiting for ClickHouse at $HOST:$PORT..."\n\
 while ! nc -z "$HOST" "$PORT"; do sleep 2; done\n\
-export CLICKHOUSE_HOST="$HOST"; export CLICKHOUSE_PORT="$PORT"; export CLICKHOUSE_USER="$USER"; export CLICKHOUSE_PASSWORD="$PASS"\n\
+\n\
+# [FIX] 產生 ClickHouse Client 設定檔\n\
+mkdir -p /etc/clickhouse-client\n\
+cat > /etc/clickhouse-client/config.xml <<EOF\n\
+<config>\n\
+    <host>$HOST</host>\n\
+    <port>$PORT</port>\n\
+    <user>$USER</user>\n\
+    <password>$PASS</password>\n\
+</config>\n\
+EOF\n\
+\n\
+bashio::log.info "Running SQL initialization scripts..."\n\
 for f in /app/sql/*; do [ -f "$f" ] || continue; chmod +x "$f"; bashio::log.info "Running $f"; /bin/bash "$f"; done\n\
 touch "/data/db_initialized.flag"\n\
 s6-svc -d /var/run/s6/services/init-remote-db\n' > /etc/services.d/init-remote-db/run

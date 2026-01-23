@@ -71,7 +71,6 @@ touch "/data/db_initialized.flag"\n\
 bashio::log.info "Database initialized successfully."\n' > /etc/services.d/init-remote-db/run
 
 # 2. OTel Collector 腳本
-# [修正] 新增一行 sed 將 prometheus 主機名稱改為 localhost
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password")\n\
 export OTEL_COLLECTOR_CLICKHOUSE_PASSWORD="$PASS"\n\
@@ -81,7 +80,7 @@ export OTEL_COLLECTOR_CLICKHOUSE_USER="$USER"\n\
 \n\
 sed -i "s|endpoint: tcp://.*:9000|endpoint: tcp://$HOST:$PORT|g" /etc/otel-collector/config.yaml\n\
 \n\
-# [FIX] 將 metrics exporter 的 prometheus 主機名改為 localhost\n\
+# Fix prometheus host\n\
 sed -i "s|http://prometheus:9090|http://localhost:9090|g" /etc/otel-collector/config.yaml\n\
 \n\
 # Disable TLS\n\
@@ -111,7 +110,13 @@ cd /app/analyzer\n\
 exec ./api_discovery\n' > /etc/services.d/log-analyzer/run
 
 # 4. Prometheus 腳本
+# [關鍵修正] 加入 --web.enable-otlp-receiver 讓 Prometheus 能接收來自 OTel 的數據
 RUN printf '#!/usr/bin/with-contenv bashio\n\
-exec /usr/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/data/prometheus --web.listen-address="0.0.0.0:9090"\n' > /etc/services.d/prometheus/run
+exec /usr/bin/prometheus \
+    --config.file=/etc/prometheus/prometheus.yml \
+    --storage.tsdb.path=/data/prometheus \
+    --web.listen-address="0.0.0.0:9090" \
+    --web.enable-otlp-receiver \
+    --web.enable-remote-write-receiver\n' > /etc/services.d/prometheus/run
 
 RUN chmod +x /etc/services.d/*/run

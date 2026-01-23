@@ -1,5 +1,5 @@
 name: "General ClickHouse"
-version: "24.8.4"
+version: "24.8.4-1"
 slug: "general_clickhouse"
 description: "Standalone ClickHouse DB optimized for local NUC deployment."
 arch:

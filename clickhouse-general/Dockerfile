@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY rootfs /
 
 # [NUCLEAR FIX] 建立啟動腳本
-# 這次改用 users.d 覆蓋法，保證密碼一定生效
+# 直接重寫 users.xml，保證密碼 100% 生效，不受舊設定檔干擾
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 PASSWORD=$(bashio::config "password")\n\
 MAX_MEM=$(bashio::config "max_memory_usage")\n\
@@ -25,7 +25,6 @@ if [ -f "/usr/sbin/clickhouse-server" ]; then\n\
 else\n\
     BINARY="/usr/bin/clickhouse-server"\n\
 fi\n\
-bashio::log.info "Found ClickHouse binary at: $BINARY"\n\
 \n\
 # 確保資料夾存在\n\
 if [ ! -d "/data/clickhouse" ]; then\n\
@@ -33,25 +32,44 @@ if [ ! -d "/data/clickhouse" ]; then\n\
     mkdir -p /data/clickhouse\n\
 fi\n\
 \n\
-# [關鍵修正] 使用 users.d 強制覆蓋密碼\n\
-# 我們建立一個獨立的設定檔，利用 ClickHouse 的 merge 機制移除舊密碼並設定新密碼\n\
-if [ ! -z "$PASSWORD" ]; then\n\
-    bashio::log.info "Creating password config in users.d/set_password.xml..."\n\
-    mkdir -p /etc/clickhouse-server/users.d\n\
-    cat > /etc/clickhouse-server/users.d/set_password.xml <<EOF\n\
+# [關鍵] 直接產生完整的 users.xml\n\
+bashio::log.info "Generating users.xml with configured password..."\n\
+cat > /etc/clickhouse-server/users.xml <<EOF\n\
 <clickhouse>\n\
+    <profiles>\n\
+        <default>\n\
+            <max_memory_usage>10000000000</max_memory_usage>\n\
+            <use_uncompressed_cache>0</use_uncompressed_cache>\n\
+            <load_balancing>random</load_balancing>\n\
+        </default>\n\
+        <readonly>\n\
+            <readonly>1</readonly>\n\
+        </readonly>\n\
+    </profiles>\n\
     <users>\n\
         <default>\n\
-            \n\
-            <password remove="1" />\n\
-            <password_sha256_hex remove="1" />\n\
-            \n\
             <password>$PASSWORD</password>\n\
+            <networks>\n\
+                <ip>::/0</ip>\n\
+            </networks>\n\
+            <profile>default</profile>\n\
+            <quota>default</quota>\n\
         </default>\n\
     </users>\n\
+    <quotas>\n\
+        <default>\n\
+            <interval>\n\
+                <duration>3600</duration>\n\
+                <queries>0</queries>\n\
+                <errors>0</errors>\n\
+                <result_rows>0</result_rows>\n\
+                <read_rows>0</read_rows>\n\
+                <execution_time>0</execution_time>\n\
+            </interval>\n\
+        </default>\n\
+    </quotas>\n\
 </clickhouse>\n\
 EOF\n\
-fi\n\
 \n\
 # 強制開啟控制台日誌\n\
 cat > /etc/clickhouse-server/config.d/console_log.xml <<EOF\n\

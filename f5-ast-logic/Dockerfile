@@ -48,7 +48,6 @@ COPY --from=fetcher /downloads/init_scripts/ /app/sql/
 RUN mkdir -p /etc/services.d/init-remote-db /etc/services.d/otel-collector /etc/services.d/log-analyzer /etc/services.d/prometheus
 
 # 1. 資料庫初始化腳本
-# [FIX] 移除 s6-svc 指令，避免報錯
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port")\n\
 USER=$(bashio::config "db_user"); PASS=$(bashio::config "db_password")\n\
@@ -72,6 +71,7 @@ touch "/data/db_initialized.flag"\n\
 bashio::log.info "Database initialized successfully."\n' > /etc/services.d/init-remote-db/run
 
 # 2. OTel Collector 腳本
+# [修正] 新增一行 sed 將 prometheus 主機名稱改為 localhost
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 HOST=$(bashio::config "db_host"); PORT=$(bashio::config "db_port"); PASS=$(bashio::config "db_password")\n\
 export OTEL_COLLECTOR_CLICKHOUSE_PASSWORD="$PASS"\n\
@@ -80,6 +80,11 @@ USER=$(bashio::config "db_user")\n\
 export OTEL_COLLECTOR_CLICKHOUSE_USER="$USER"\n\
 \n\
 sed -i "s|endpoint: tcp://.*:9000|endpoint: tcp://$HOST:$PORT|g" /etc/otel-collector/config.yaml\n\
+\n\
+# [FIX] 將 metrics exporter 的 prometheus 主機名改為 localhost\n\
+sed -i "s|http://prometheus:9090|http://localhost:9090|g" /etc/otel-collector/config.yaml\n\
+\n\
+# Disable TLS\n\
 sed -i "s|ca_file:|# ca_file:|g" /etc/otel-collector/config.yaml\n\
 sed -i "s|cert_file:|# cert_file:|g" /etc/otel-collector/config.yaml\n\
 sed -i "s|key_file:|# key_file:|g" /etc/otel-collector/config.yaml\n\

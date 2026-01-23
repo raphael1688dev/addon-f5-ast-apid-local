@@ -80,7 +80,7 @@ export OTEL_COLLECTOR_CLICKHOUSE_USER="$USER"\n\
 \n\
 sed -i "s|endpoint: tcp://.*:9000|endpoint: tcp://$HOST:$PORT|g" /etc/otel-collector/config.yaml\n\
 \n\
-# [Fix] 將 metrics exporter 的 prometheus 主機名改為 localhost\n\
+# Fix prometheus host\n\
 sed -i "s|http://prometheus:9090|http://localhost:9090|g" /etc/otel-collector/config.yaml\n\
 \n\
 # Disable TLS\n\
@@ -110,7 +110,6 @@ cd /app/analyzer\n\
 exec ./api_discovery\n' > /etc/services.d/log-analyzer/run
 
 # 4. Prometheus 腳本
-# [關鍵] 使用 enable-feature=otlp-write-receiver 支援 v2.54 版
 RUN printf '#!/usr/bin/with-contenv bashio\n\
 exec /usr/bin/prometheus \
     --config.file=/etc/prometheus/prometheus.yml \
@@ -119,4 +118,5 @@ exec /usr/bin/prometheus \
     --enable-feature=otlp-write-receiver \
     --web.enable-remote-write-receiver\n' > /etc/services.d/prometheus/run
 
+# [重要] Dockerfile 到這裡就結束了，不要加 CMD 或 ENTRYPOINT
 RUN chmod +x /etc/services.d/*/run
